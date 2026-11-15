@@ -36,6 +36,7 @@ import {
   ReSkillPreset,
   ReSpecialistAgent,
   ResourceGovernorConfig,
+  SettingsModalTab,
   ToolchainState,
   WorkbenchTabId,
   WorkspaceFile,
@@ -95,6 +96,24 @@ function classifyReverseSkill(prompt: string): {
 export function App() {
   // Navigation & Cockpit Shell State
   const [activeDesk, setActiveDesk] = useState<DeskId>("chat");
+  const [settingsModalTab, setSettingsModalTab] = useState<SettingsModalTab | null>(
+    () => {
+      try {
+        return localStorage.getItem("deeptrace_first_run_seen_v1")
+          ? null
+          : "toolchain";
+      } catch {
+        return "toolchain";
+      }
+    }
+  );
+  const [isFirstRunModal, setIsFirstRunModal] = useState<boolean>(() => {
+    try {
+      return !localStorage.getItem("deeptrace_first_run_seen_v1");
+    } catch {
+      return true;
+    }
+  });
   const [doorMode, setDoorMode] = useState<ReDoorMode>("assistant");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [workbenchCollapsed, setWorkbenchCollapsed] = useState(false);
@@ -121,9 +140,28 @@ export function App() {
   const [memoryDocs, setMemoryDocs] = useState<ProjectMemoryDoc[]>(SAMPLE_MEMORY_DOCS);
   const [activeMemoryId, setActiveMemoryId] = useState<string>(SAMPLE_MEMORY_DOCS[0].id);
 
-  // Sessions, Chat, Providers & Guardrail Failover
-  const [sessions, setSessions] = useState<ReSessionItem[]>(SAMPLE_SESSIONS);
-  const [activeSessionId, setActiveSessionId] = useState<string>(SAMPLE_SESSIONS[0].id);
+  // Sessions, Chat, Providers & Guardrail Failover (persisted locally for native continuity)
+  const [sessions, setSessions] = useState<ReSessionItem[]>(() => {
+    try {
+      const raw = localStorage.getItem("deeptrace_sessions_v3");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return SAMPLE_SESSIONS;
+  });
+  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
+    try {
+      const savedId = localStorage.getItem("deeptrace_active_session_v3");
+      if (savedId) return savedId;
+    } catch {
+      // ignore
+    }
+    return SAMPLE_SESSIONS[0].id;
+  });
   const [endpoints, setEndpoints] = useState<LlmEndpointConfig[]>(SAMPLE_LLM_ENDPOINTS);
   const [selectedEndpointId, setSelectedEndpointId] = useState<string>(
     SAMPLE_LLM_ENDPOINTS[0].id
@@ -142,13 +180,49 @@ export function App() {
   const [toolchain, setToolchain] = useState<ToolchainState>(SAMPLE_TOOLCHAIN_STATE);
   const [permissionMode, setPermissionMode] = useState<PermissionMode>("turbo");
   const [sliceHops, setSliceHops] = useState<number>(3);
-  const [messages, setMessages] = useState<AgentMessage[]>(SAMPLE_AGENT_MESSAGES);
+  const [messages, setMessages] = useState<AgentMessage[]>(() => {
+    try {
+      const raw = localStorage.getItem("deeptrace_messages_v3");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return SAMPLE_AGENT_MESSAGES;
+  });
   const [isStreaming, setIsStreaming] = useState(false);
   const streamTimerRef = useRef<number | null>(null);
   const rafResizeRef = useRef<number | null>(null);
   const lastUserPromptRef = useRef<string>(
     SAMPLE_AGENT_MESSAGES[0]?.content ?? ""
   );
+
+  // Persist sessions & active chat locally so restarting the desktop app keeps work
+  useEffect(() => {
+    try {
+      localStorage.setItem("deeptrace_sessions_v3", JSON.stringify(sessions));
+    } catch {
+      // ignore quota errors
+    }
+  }, [sessions]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("deeptrace_active_session_v3", activeSessionId);
+    } catch {
+      // ignore
+    }
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("deeptrace_messages_v3", JSON.stringify(messages));
+    } catch {
+      // ignore quota errors
+    }
+  }, [messages]);
 
   // Console Logs
   const [logs, setLogs] = useState<ConsoleLogEntry[]>(SAMPLE_CONSOLE_LOGS);
@@ -707,6 +781,20 @@ export function App() {
     );
   };
 
+  const handleOpenSettingsModal = useCallback((tab: SettingsModalTab) => {
+    setSettingsModalTab(tab);
+  }, []);
+
+  const handleCloseSettingsModal = useCallback(() => {
+    setSettingsModalTab(null);
+    setIsFirstRunModal(false);
+    try {
+      localStorage.setItem("deeptrace_first_run_seen_v1", "1");
+    } catch {
+      // ignore storage errors
+    }
+  }, []);
+
   const handleNewSession = () => {
     const newId = `sess-${Date.now()}`;
     const nextSess: ReSessionItem = {
@@ -720,8 +808,89 @@ export function App() {
     setSessions((prev) => [nextSess, ...prev]);
     setActiveSessionId(newId);
     setActiveDesk("chat");
+    setSettingsModalTab(null);
     setMessages([]);
   };
+
+  const handleDeleteSession = (id: string) => {
+    setSessions((prev) => {
+      const remaining = prev.filter((s) => s.id !== id);
+      if (remaining.length === 0) {
+        const freshId = `sess-${Date.now()}`;
+        const freshSess: ReSessionItem = {
+          id: freshId,
+          title: "แชทวิเคราะห์ใหม่",
+          target: "target_app_v4.2.1.apk",
+          ago: "ตอนนี้",
+          door: doorMode,
+          status: "idle",
+        };
+        setActiveSessionId(freshId);
+        setMessages([]);
+        return [freshSess];
+      }
+      if (activeSessionId === id) {
+        setActiveSessionId(remaining[0].id);
+      }
+      return remaining;
+    });
+    appendLog("mcp", "info", `[Session] ลบห้องวิเคราะห์ (${id}) ออกจากรายการแล้ว`);
+  };
+
+  const handleCopySelfMcpPayload = useCallback(() => {
+    const mcpJson = JSON.stringify(
+      {
+        mcpServers: {
+          "deeptrace-re-bridge": {
+            command: "python",
+            args: ["-m", "backend.mcp_servers.deeptrace_bridge_mcp"],
+            env: {
+              DEEPTRACE_DEFAULT_PROVIDER: externalMcpConfig.defaultProviderId,
+              DEEPTRACE_DEFAULT_MODEL: externalMcpConfig.defaultModelName,
+              DEEPTRACE_TOOLS_ROOT: toolchain.installRoot,
+              DEEPTRACE_API_URL: "http://127.0.0.1:8000",
+            },
+          },
+        },
+      },
+      null,
+      2
+    );
+
+    const bundle = [
+      "# DeepTrace RE Harness — MCP Connection Bundle",
+      "# นำข้อมูลด้านล่างไปวางให้ Antigravity / Claude / Codex / Cursor เพื่อเชื่อมต่อและสั่งงาน RE ผ่าน DeepTrace ได้ทันที",
+      "",
+      `- MCP Server Name: deeptrace-re-bridge`,
+      `- Stdio Command: python -m backend.mcp_servers.deeptrace_bridge_mcp`,
+      `- HTTP Bridge API: http://127.0.0.1:8000 (Swagger: http://127.0.0.1:8000/docs)`,
+      `- Default Worker Model: ${externalMcpConfig.defaultProviderId} / ${externalMcpConfig.defaultModelName}`,
+      `- RE Toolchain Root (Pure ASCII): ${toolchain.installRoot}`,
+      "",
+      "## MCP Tools Exposed by DeepTrace:",
+      "1. check_deeptrace_bridge_status() — เช็กสถานะ Bridge, Provider และ API Key พร้อมใช้งาน",
+      "2. delegate_re_task_to_deeptrace(instruction, target_path, skill) — ส่งงาน RE ให้ DeepTrace จัดการ",
+      "3. run_deeptrace_3hop_trace(symbol_or_header, target_apk) — ไล่สายเรียก 3-Hop (Java -> JNI -> .so -> Frida Hook)",
+      "4. scan_re_toolchain(install_root) — ตรวจสอบ adb / jadx / apktool / ghidra / frida / radare2 / il2cppdumper",
+      "",
+      "## mcp_config.json:",
+      "```json",
+      mcpJson,
+      "```",
+    ].join("\n");
+
+    navigator.clipboard?.writeText(bundle);
+    appendLog(
+      "mcp",
+      "success",
+      "[MCP Copy] คัดลอกชุดข้อมูลเชื่อมต่อ DeepTrace MCP (JSON + Endpoints + Tools) ลง Clipboard แล้ว พร้อมวางให้ AI เจ้าอื่น"
+    );
+  }, [
+    externalMcpConfig.defaultModelName,
+    externalMcpConfig.defaultProviderId,
+    toolchain.installRoot,
+    appendLog,
+  ]);
 
   const handleToggleMcpServer = (id: string) => {
     setMcpServers((prev) =>
@@ -744,6 +913,7 @@ export function App() {
   };
 
   const handleLaunchSpecialist = (agent: ReSpecialistAgent) => {
+    handleCloseSettingsModal();
     setActiveDesk("chat");
     handleSendPrompt(`[${agent.name}] ${agent.samplePrompt}`);
   };
@@ -824,6 +994,7 @@ export function App() {
         : [nextEndpoint, ...prev];
     });
     setSelectedEndpointId(routeId);
+    handleCloseSettingsModal();
     setActiveDesk("chat");
     appendLog(
       "mcp",
@@ -972,6 +1143,7 @@ export function App() {
   };
 
   const handleSimulateExternalMcpCall = () => {
+    handleCloseSettingsModal();
     setActiveDesk("chat");
     const mcpProvider = providers.find(
       (p) => p.id === externalMcpConfig.defaultProviderId
@@ -1076,6 +1248,7 @@ export function App() {
   };
 
   const handleTestFailover = () => {
+    handleCloseSettingsModal();
     setActiveDesk("chat");
     handleSendPrompt(
       `วิเคราะห์ Xrefs ของ ${activeFile.name} พร้อมสร้าง Frida hook ตรวจสอบ SSL pinning & signature buffer`,
@@ -1154,6 +1327,12 @@ export function App() {
   return (
     <div
       style={rootStyle}
+      onContextMenu={(e) => {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag !== "INPUT" && tag !== "TEXTAREA") {
+          e.preventDefault();
+        }
+      }}
       className={`cockpit-app ${isResizing ? "resizing" : ""} ${
         sidebarCollapsed ? "sidebar-collapsed" : ""
       } ${workbenchCollapsed ? "workbench-collapsed" : ""}`}
@@ -1162,12 +1341,16 @@ export function App() {
       <LeftSidebar
         activeDesk={activeDesk}
         onSelectDesk={setActiveDesk}
+        settingsModalTab={settingsModalTab}
+        onOpenSettingsModal={handleOpenSettingsModal}
         doorMode={doorMode}
         onChangeDoorMode={handleChangeDoorMode}
         sessions={sessions}
         activeSessionId={activeSessionId}
         onSelectSession={setActiveSessionId}
         onNewSession={handleNewSession}
+        onDeleteSession={handleDeleteSession}
+        onCopySelfMcpPayload={handleCopySelfMcpPayload}
         enabledToolsCount={enabledToolsCount}
         configuredProvidersCount={configuredProvidersCount}
         permissionMode={permissionMode}
@@ -1186,6 +1369,10 @@ export function App() {
       <CenterWorkspaceCard
         activeDesk={activeDesk}
         onSelectDesk={setActiveDesk}
+        settingsModalTab={settingsModalTab}
+        isFirstRunModal={isFirstRunModal}
+        onOpenSettingsModal={handleOpenSettingsModal}
+        onCloseSettingsModal={handleCloseSettingsModal}
         sessionTitle={activeSession?.title ?? "DeepTrace Session"}
         sidebarCollapsed={sidebarCollapsed}
         workbenchCollapsed={workbenchCollapsed}
@@ -1231,6 +1418,7 @@ export function App() {
         externalMcpConfig={externalMcpConfig}
         onUpdateExternalMcpConfig={handleUpdateExternalMcpConfig}
         onSimulateExternalMcpCall={handleSimulateExternalMcpCall}
+        onCopySelfMcpPayload={handleCopySelfMcpPayload}
         toolchain={toolchain}
         onChangeInstallRoot={handleChangeInstallRoot}
         onScanToolchainOnly={handleScanToolchainOnly}

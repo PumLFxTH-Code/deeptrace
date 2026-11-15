@@ -12,23 +12,11 @@
   --surface-raised: #1f1f23;
   --surface-hover: #26262b;
   --surface-row-hover: #1c1c20;
-  --surface-selected: #132033;
-
-  /* Borders */
-  --border-default: #2a2a2e;
-  --border-subtle: #222226;
-  --border-strong: #3a3a40;
-
-  /* Text */
-  --text-primary: #f2f2f3;
-  --text-secondary: #b0b3b8;
-  --text-muted: #7d8087;
-  --text-dim: #56585f;
-  --text-selected: #cfe0ff;
-
-  /* Single Accent + Interactive */
-  --accent: #35d0e0;
-  --interactive: #2f6bff;
+  /* Single Accent + Interactive (Calm Monochrome) */
+  --surface-selected: #242429;
+  --text-selected: #f4f4f5;
+  --accent: #71717a;
+  --interactive: #e4e4e7;
 
   /* Status (used sparingly as small dots or diff markers) */
   --status-success: #3fb950;

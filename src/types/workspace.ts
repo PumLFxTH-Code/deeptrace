@@ -4,6 +4,8 @@ export type EditorLanguage = "smali" | "java" | "c" | "arm64" | "javascript";
 
 export type DeskId = "chat" | "capabilities" | "specialists" | "memory" | "models";
 
+export type SettingsModalTab = Exclude<DeskId, "chat"> | "toolchain";
+
 export type WorkbenchTabId = "editor" | "diff" | "symbols" | "files" | "terminal";
 
 export type PermissionMode = "request-review" | "default" | "auto" | "turbo";

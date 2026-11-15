@@ -23,7 +23,7 @@ from backend.mcp_servers.re_local_mcp import scan_re_toolchain
 
 app = FastAPI(
     title="DeepTrace RE Agent & MCP Host",
-    version="0.1.0-beta.2",
+    version="0.1.0-beta.3",
     description="OpenAI-compatible LLM Router + MCP Host for Reverse Engineering",
 )
 

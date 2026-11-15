@@ -1,10 +1,11 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Editor, { DiffEditor, type Monaco } from "@monaco-editor/react";
 import {
   AlertTriangle,
   ArrowRight,
   Check,
   Code2,
+  Copy,
   CornerDownLeft,
   Cpu,
   FileCode2,
@@ -64,7 +65,32 @@ export const RightWorkbench: React.FC<RightWorkbenchProps> = ({
   const [fileQuery, setFileQuery] = useState("");
   const [consoleChannel, setConsoleChannel] = useState<ConsoleTab>("frida");
   const [command, setCommand] = useState("");
+  const [editorMenuPos, setEditorMenuPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [copiedFile, setCopiedFile] = useState(false);
   const logsEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!editorMenuPos) return;
+    const dismiss = () => setEditorMenuPos(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setEditorMenuPos(null);
+    };
+    window.addEventListener("click", dismiss);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("click", dismiss);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [editorMenuPos]);
+
+  const handleCopyActiveFile = () => {
+    navigator.clipboard?.writeText(activeFile.content);
+    setCopiedFile(true);
+    window.setTimeout(() => setCopiedFile(false), 1600);
+  };
 
   const pendingDiffFiles = useMemo(
     () => files.filter((f) => Boolean(f.modifiedContent)),
@@ -159,7 +185,7 @@ export const RightWorkbench: React.FC<RightWorkbenchProps> = ({
                   : "text-[#b0b3b8] hover:text-[#f2f2f3] hover:bg-[#1f1f23]/60"
               }`}
             >
-              <span className={isActive ? "text-[#35d0e0]" : "text-[#7d8087]"}>
+              <span className={isActive ? "text-[#f4f4f5]" : "text-[#7d8087]"}>
                 {tab.icon}
               </span>
               <span>{tab.label}</span>
@@ -191,13 +217,27 @@ export const RightWorkbench: React.FC<RightWorkbenchProps> = ({
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleCopyActiveFile}
+                  title="คัดลอกโค้ดไฟล์นี้"
+                  className="px-2 py-1 rounded-md bg-[#1f1f23] hover:bg-[#26262b] border border-[#2a2a2e] text-[11.5px] text-[#b0b3b8] hover:text-[#f2f2f3] flex items-center gap-1"
+                >
+                  {copiedFile ? (
+                    <Check className="w-3 h-3 text-[#f4f4f5]" />
+                  ) : (
+                    <Copy className="w-3 h-3" />
+                  )}
+                  <span>{copiedFile ? "คัดลอกแล้ว" : "คัดลอกโค้ด"}</span>
+                </button>
+
                 {activeFile.modifiedContent && (
                   <button
                     type="button"
                     onClick={() => onSelectTab("diff")}
                     className="px-2.5 py-1 rounded-md bg-[#1f1f23] hover:bg-[#26262b] border border-[#3a3a40] text-[11.5px] text-[#f2f2f3] flex items-center gap-1.5"
                   >
-                    <GitCompare className="w-3 h-3 text-[#d29922]" />
+                    <GitCompare className="w-3 h-3 text-[#d4d4d8]" />
                     ดู Diff
                   </button>
                 )}
@@ -210,7 +250,7 @@ export const RightWorkbench: React.FC<RightWorkbenchProps> = ({
                     onClick={() => onSyncSymbols(activeFile)}
                     className="px-2.5 py-1 rounded-md bg-[#1f1f23] hover:bg-[#26262b] border border-[#2a2a2e] text-[11.5px] text-[#b0b3b8] hover:text-[#f2f2f3] flex items-center gap-1.5"
                   >
-                    <RefreshCw className="w-3 h-3 text-[#35d0e0]" />
+                    <RefreshCw className="w-3 h-3 text-[#d4d4d8]" />
                     Sync {activeFile.category === "java" ? "JADX" : "Ghidra"}
                   </button>
                 )}
@@ -219,7 +259,7 @@ export const RightWorkbench: React.FC<RightWorkbenchProps> = ({
                   <button
                     type="button"
                     onClick={() => onRunFridaScript(activeFile)}
-                    className="px-2.5 py-1 rounded-md bg-[#2f6bff] hover:bg-[#3b78ff] text-[11.5px] font-medium text-white flex items-center gap-1.5"
+                    className="px-2.5 py-1 rounded-md bg-[#e4e4e7] hover:bg-[#f4f4f5] text-[11.5px] font-medium text-[#111113] flex items-center gap-1.5"
                   >
                     <Play className="w-3 h-3 fill-current" />
                     รัน Frida
@@ -228,7 +268,14 @@ export const RightWorkbench: React.FC<RightWorkbenchProps> = ({
               </div>
             </div>
 
-            <div className="flex-1 min-h-0">
+            <div
+              className="flex-1 min-h-0"
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setEditorMenuPos({ x: e.clientX, y: e.clientY });
+              }}
+            >
               <Editor
                 key={`wb-editor-${activeFile.id}`}
                 height="100%"
@@ -244,6 +291,7 @@ export const RightWorkbench: React.FC<RightWorkbenchProps> = ({
                 }}
                 options={{
                   minimap: { enabled: false },
+                  contextmenu: false,
                   fontSize: 12.5,
                   fontFamily:
                     "Cascadia Code, JetBrains Mono, Consolas, monospace",
@@ -304,15 +352,15 @@ export const RightWorkbench: React.FC<RightWorkbenchProps> = ({
                     <button
                       type="button"
                       onClick={() => onAcceptPatch(diffTarget.id)}
-                      className="px-2.5 py-1 rounded-md bg-[#1f1f23] hover:bg-[#26262b] border border-[#3fb950]/50 text-[#9ff0ad] text-[11.5px] font-medium flex items-center gap-1"
+                      className="px-2.5 py-1 rounded-md bg-[#e4e4e7] hover:bg-[#f4f4f5] text-[#111113] text-[11.5px] font-medium flex items-center gap-1"
                     >
-                      <Check className="w-3.5 h-3.5 text-[#3fb950]" />
+                      <Check className="w-3.5 h-3.5" />
                       Apply Patch
                     </button>
                     <button
                       type="button"
                       onClick={() => onRejectPatch(diffTarget.id)}
-                      className="px-2 py-1 rounded-md bg-[#1f1f23] hover:bg-[#26262b] border border-[#2a2a2e] text-[#b0b3b8] hover:text-[#f85149] text-[11.5px] flex items-center gap-1"
+                      className="px-2 py-1 rounded-md bg-[#1f1f23] hover:bg-[#26262b] border border-[#2a2a2e] text-[#b0b3b8] hover:text-[#f4f4f5] text-[11.5px] flex items-center gap-1"
                     >
                       <X className="w-3.5 h-3.5" />
                       Discard
@@ -326,7 +374,14 @@ export const RightWorkbench: React.FC<RightWorkbenchProps> = ({
                   </div>
                 )}
 
-                <div className="flex-1 min-h-0">
+                <div
+                  className="flex-1 min-h-0"
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setEditorMenuPos({ x: e.clientX, y: e.clientY });
+                  }}
+                >
                   <DiffEditor
                     key={`wb-diff-${diffTarget.id}`}
                     height="100%"
@@ -341,6 +396,7 @@ export const RightWorkbench: React.FC<RightWorkbenchProps> = ({
                       renderSideBySide: true,
                       useInlineViewWhenSpaceIsLimited: true,
                       minimap: { enabled: false },
+                      contextmenu: false,
                       fontSize: 12.5,
                       fontFamily:
                         "Cascadia Code, JetBrains Mono, Consolas, monospace",
@@ -367,7 +423,7 @@ export const RightWorkbench: React.FC<RightWorkbenchProps> = ({
             <div className="rounded-xl bg-[#16161a] border border-[#2a2a2e] p-3.5 space-y-2.5">
               <div className="flex items-center justify-between">
                 <div className="text-[12px] font-semibold text-[#f2f2f3] flex items-center gap-2">
-                  <GitBranch className="w-4 h-4 text-[#35d0e0]" />
+                  <GitBranch className="w-4 h-4 text-[#a1a1aa]" />
                   <span>Smart Context Slice ({sliceHops}-Hop Call Graph)</span>
                 </div>
                 <span className="text-[11px] font-mono text-[#7d8087]">
@@ -404,7 +460,7 @@ export const RightWorkbench: React.FC<RightWorkbenchProps> = ({
                     onSelectFile("native-c-jni");
                     onSelectTab("editor");
                   }}
-                  className="px-2 py-1 rounded bg-[#1f1f23] hover:bg-[#26262b] border border-[#2a2a2e] text-[#35d0e0]"
+                  className="px-2 py-1 rounded bg-[#1f1f23] hover:bg-[#26262b] border border-[#2a2a2e] text-[#f4f4f5]"
                 >
                   0x14720 (JNI)
                 </button>
@@ -415,7 +471,7 @@ export const RightWorkbench: React.FC<RightWorkbenchProps> = ({
                     onSelectFile("native-arm64");
                     onSelectTab("editor");
                   }}
-                  className="px-2 py-1 rounded bg-[#1f1f23] hover:bg-[#26262b] border border-[#2a2a2e] text-[#cfe0ff]"
+                  className="px-2 py-1 rounded bg-[#1f1f23] hover:bg-[#26262b] border border-[#2a2a2e] text-[#d4d4d8]"
                 >
                   0x14A80 (sub_14A80)
                 </button>
@@ -431,7 +487,7 @@ export const RightWorkbench: React.FC<RightWorkbenchProps> = ({
                 <button
                   type="button"
                   onClick={() => onSyncSymbols(activeFile)}
-                  className="text-[11.5px] text-[#35d0e0] hover:underline flex items-center gap-1"
+                  className="text-[11.5px] text-[#d4d4d8] hover:underline flex items-center gap-1"
                 >
                   <RefreshCw className="w-3 h-3" />
                   Sync Active to MCP
@@ -510,15 +566,15 @@ export const RightWorkbench: React.FC<RightWorkbenchProps> = ({
                     }}
                     className={`w-full px-2.5 py-2 rounded-lg text-left flex items-center justify-between gap-2 transition-colors ${
                       isActive
-                        ? "bg-[#132033] text-[#cfe0ff]"
-                        : "text-[#b0b3b8] hover:bg-[#1c1c20] hover:text-[#f2f2f3]"
+                        ? "bg-[#242429] text-[#f4f4f5] border border-[#34343c]"
+                        : "text-[#a1a1aa] hover:bg-[#1c1c20] hover:text-[#f4f4f5] border border-transparent"
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       {file.category === "native-c" || file.category === "arm64" ? (
                         <Cpu className="w-4 h-4 text-[#7d8087] shrink-0" />
                       ) : file.category === "frida" ? (
-                        <TerminalIcon className="w-4 h-4 text-[#35d0e0] shrink-0" />
+                        <TerminalIcon className="w-4 h-4 text-[#a1a1aa] shrink-0" />
                       ) : (
                         <FileCode2 className="w-4 h-4 text-[#7d8087] shrink-0" />
                       )}
@@ -601,11 +657,11 @@ export const RightWorkbench: React.FC<RightWorkbenchProps> = ({
                     key={entry.id}
                     className={`flex gap-2.5 leading-relaxed ${
                       entry.level === "error"
-                        ? "text-[#ffb3ae] bg-[#f85149]/10 px-2 py-1 rounded-md border border-[#f85149]/25"
+                        ? "text-[#e4e4e7] bg-[#241c1c] px-2 py-1 rounded-md border border-[#523434]"
                         : entry.level === "warn"
-                        ? "text-[#d29922]"
+                        ? "text-[#d4d4d8]"
                         : entry.level === "success"
-                        ? "text-[#9ff0ad]"
+                        ? "text-[#f4f4f5]"
                         : "text-[#b0b3b8]"
                     }`}
                   >
@@ -626,7 +682,7 @@ export const RightWorkbench: React.FC<RightWorkbenchProps> = ({
               onSubmit={handleRunCmd}
               className="px-3 py-2 border-t border-[#222226] bg-[#131316] flex items-center gap-2 shrink-0"
             >
-              <span className="font-mono text-[12px] text-[#35d0e0] shrink-0">
+              <span className="font-mono text-[12px] text-[#a1a1aa] shrink-0">
                 {consoleChannel}$
               </span>
               <input
@@ -647,6 +703,66 @@ export const RightWorkbench: React.FC<RightWorkbenchProps> = ({
           </div>
         )}
       </div>
+
+      {/* Custom Native Desktop RE Context Menu (Replaces Web Monaco Context Menu) */}
+      {editorMenuPos && (
+        <div
+          style={{
+            left: Math.min(editorMenuPos.x, window.innerWidth - 260),
+            top: Math.min(editorMenuPos.y, window.innerHeight - 190),
+          }}
+          onClick={(e) => e.stopPropagation()}
+          className="fixed z-50 w-[248px] rounded-xl bg-[#18181c] border border-[#2f2f36] shadow-2xl p-1.5 text-[12px] text-[#e4e4e7] select-none"
+        >
+          <div className="px-2.5 py-1 text-[10.5px] font-mono text-[#7d8087] truncate border-b border-[#242429] mb-1">
+            {activeFile.name}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              handleCopyActiveFile();
+              setEditorMenuPos(null);
+            }}
+            className="w-full px-2.5 py-1.5 rounded-lg hover:bg-[#242429] text-left flex items-center gap-2 transition-colors"
+          >
+            <Copy className="w-3.5 h-3.5 text-[#a1a1aa]" />
+            <span>คัดลอกโค้ดไฟล์นี้ (Copy Code)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onSelectTab(activeTab === "diff" ? "editor" : "diff");
+              setEditorMenuPos(null);
+            }}
+            className="w-full px-2.5 py-1.5 rounded-lg hover:bg-[#242429] text-left flex items-center gap-2 transition-colors"
+          >
+            <GitCompare className="w-3.5 h-3.5 text-[#a1a1aa]" />
+            <span>สลับโหมดเปรียบเทียบโค้ด (Diff)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onRunFridaScript(activeFile);
+              setEditorMenuPos(null);
+            }}
+            className="w-full px-2.5 py-1.5 rounded-lg hover:bg-[#242429] text-left flex items-center gap-2 transition-colors"
+          >
+            <Play className="w-3.5 h-3.5 text-[#a1a1aa]" />
+            <span>รันสคริปต์ Frida (Run Hook)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onSyncSymbols(activeFile);
+              setEditorMenuPos(null);
+            }}
+            className="w-full px-2.5 py-1.5 rounded-lg hover:bg-[#242429] text-left flex items-center gap-2 transition-colors"
+          >
+            <RefreshCw className="w-3.5 h-3.5 text-[#a1a1aa]" />
+            <span>ซิงก์ชื่อฟังก์ชัน (Sync Symbols)</span>
+          </button>
+        </div>
+      )}
     </aside>
   );
 };
