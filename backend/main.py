@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from backend.core.agent_loop import stream_agent_turn
+from backend.core.agent_loop import route_reverse_skill, stream_agent_turn
 from backend.core.config import (
     DEFAULT_LLM_ROUTES,
     DEFAULT_RESOURCE_GUARD,
@@ -19,10 +19,11 @@ from backend.mcp_servers.deeptrace_bridge_mcp import (
     deeptrace_delegate_re_subtask,
     get_external_mcp_client_Registration,
 )
+from backend.mcp_servers.re_local_mcp import scan_re_toolchain
 
 app = FastAPI(
     title="DeepTrace RE Agent & MCP Host",
-    version="0.1.0-beta.1",
+    version="0.1.0-beta.2",
     description="OpenAI-compatible LLM Router + MCP Host for Reverse Engineering",
 )
 
@@ -78,6 +79,18 @@ async def get_resource_guard() -> dict[str, Any]:
 async def get_mcp_status() -> dict[str, list[dict[str, Any]]]:
     """Return MCP Host server statuses (GhidraMCP, jadx-ai-mcp, re-local-mcp)."""
     return {"servers": mcp_registry.list_status()}
+
+
+@app.get("/api/toolchain/scan")
+async def toolchain_scan(install_root: str = r"C:\DeepTraceTools") -> dict[str, Any]:
+    """Scan installed local RE CLI tools and validate ASCII-safe paths."""
+    return scan_re_toolchain(install_root=install_root)
+
+
+@app.get("/api/skills/route")
+async def skill_route(prompt: str = "") -> dict[str, str]:
+    """Select the optimal reverse-skill scenario module for a user prompt."""
+    return route_reverse_skill(prompt)
 
 
 @app.get("/api/mcp/bridge/preflight")

@@ -74,3 +74,12 @@ DeepTrace can also act as an **MCP Server (`deeptrace-re-bridge`)** so frontier 
 
 - **Preflight Check (`GET /api/mcp/bridge/preflight`)**: Verifies that a default MCP model and API key (if cloud) are configured before external orchestration starts.
 - **Resource Governor (4–8GB GPU Friendly)**: Caps subprocess CPU priority (`BELOW_NORMAL_PRIORITY_CLASS` on Windows), concurrency queues, Monaco Editor highlights, and Console Ring Buffer limits so host machines stay responsive.
+
+## What's New in `v0.1.0-beta.2`
+- **Native Windows Desktop Build & Custom Logo**: Dedicated DeepTrace icon (`public/logo.png`, `src-tauri/icons/icon.ico`) bundled via Tauri v2.
+- **2-Button RE Toolchain Bootstrapper (`GET /api/toolchain/scan`)**:
+  1. **เช็คเครื่องมือ & ติดตั้ง (Auto-Setup)**: Automatically detects and installs missing RE essentials (`adb`, `jadx`, `apktool`, `ghidra`, `frida`) into `C:\DeepTraceTools` and updates `TOOL_INDEX.md`.
+  2. **เช็คเครื่องมือ (Scan Only)**: Reports installed vs. missing tools, lets users pick a custom folder, or install selectively.
+- **Thai / Non-ASCII Path Guard**: Automatically warns when a chosen install path or project folder contains Thai or non-ASCII characters and offers 1-click switching to pure ASCII `C:\DeepTraceTools` or `D:\DeepTraceTools`.
+- **`reverse-skill` Master Router (`GET /api/skills/route`) & Field Journal**: Routes prompts across `apk-reverse`, `ghidra-native-reverse`, `js-vmp-reverse`, `protocol-protobuf-reverse`, `unity-il2cpp-dotnet`, and `go-rust-binary-reverse`, capturing `Evidence -> Finding -> Path` lessons in `FIELD_JOURNAL.md`.
+- **SmartScreen / Antivirus Clean Separation**: Keeps `deeptrace.exe` free of packed RE binaries/UPX and provides a copyable `Add-MpPreference -ExclusionPath` command for external tools in `C:\DeepTraceTools`.

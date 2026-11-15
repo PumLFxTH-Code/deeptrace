@@ -8,8 +8,10 @@ import {
   ChevronDown,
   ChevronRight,
   Cpu,
+  Download,
   Eye,
   FileText,
+  FolderOpen,
   Gauge,
   GitBranch,
   Info,
@@ -25,6 +27,7 @@ import {
   ShieldAlert,
   Sparkles,
   Square,
+  Wrench,
   X,
 } from "lucide-react";
 import {
@@ -42,6 +45,7 @@ import {
   ReSpecialistAgent,
   ResourceGovernorConfig,
   ResourceMode,
+  ToolchainState,
   WorkspaceFile,
 } from "../types/workspace";
 
@@ -98,6 +102,12 @@ interface CenterWorkspaceCardProps {
   externalMcpConfig: ExternalMcpBridgeConfig;
   onUpdateExternalMcpConfig: (patch: Partial<ExternalMcpBridgeConfig>) => void;
   onSimulateExternalMcpCall: () => void;
+  // RE Toolchain Scanner & Installer + Thai Path Guard
+  toolchain: ToolchainState;
+  onChangeInstallRoot: (root: string) => void;
+  onScanToolchainOnly: () => void;
+  onCheckAndInstallToolchain: () => void;
+  onInstallSingleTool: (toolId: string) => void;
 }
 
 const PERMISSION_OPTIONS: {
@@ -221,6 +231,11 @@ export const CenterWorkspaceCard: React.FC<CenterWorkspaceCardProps> = ({
   externalMcpConfig,
   onUpdateExternalMcpConfig,
   onSimulateExternalMcpCall,
+  toolchain,
+  onChangeInstallRoot,
+  onScanToolchainOnly,
+  onCheckAndInstallToolchain,
+  onInstallSingleTool,
 }) => {
   const [draft, setDraft] = useState("");
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
@@ -232,8 +247,279 @@ export const CenterWorkspaceCard: React.FC<CenterWorkspaceCardProps> = ({
   >({});
   const [apiKeyDrafts, setApiKeyDrafts] = useState<Record<string, string>>({});
   const [copiedBridgeCfg, setCopiedBridgeCfg] = useState(false);
+  const [copiedDefenderCmd, setCopiedDefenderCmd] = useState(false);
+  const [showDefenderGuide, setShowDefenderGuide] = useState(false);
+  const [showFirstRunBanner, setShowFirstRunBanner] = useState(true);
   const [newNoteName, setNewNoteName] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const hasNonAsciiInstallPath = /[^\x00-\x7F]/.test(toolchain.installRoot);
+  const installedToolsCount = toolchain.tools.filter((t) => t.installed).length;
+  const missingRecommendedCount = toolchain.tools.filter(
+    (t) => t.recommended && !t.installed
+  ).length;
+  const missingAnyCount = toolchain.tools.filter((t) => !t.installed).length;
+  const defenderCommand = `Add-MpPreference -ExclusionPath "${toolchain.installRoot || "C:\\DeepTraceTools"}"`;
+
+  const renderToolchainBootstrapper = (compact = false) => (
+    <section
+      className={`rounded-xl border border-[#2a2a2e] ${
+        compact ? "bg-[#16161a]/95 p-3.5" : "bg-[#16161a] p-4"
+      } space-y-3`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2.5">
+        <div className="space-y-0.5 min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <Wrench className="w-4 h-4 text-[#35d0e0] shrink-0" />
+            <h3 className="text-[13.5px] font-semibold text-[#f2f2f3]">
+              RE Toolchain Bootstrapper & Path Guard
+            </h3>
+            <span
+              className={`px-2 py-0.5 rounded-md font-mono text-[10.5px] ${
+                missingRecommendedCount === 0
+                  ? "bg-[#14261c] border border-[#3fb950]/40 text-[#7ee787]"
+                  : "bg-[#251f10] border border-[#d29922]/40 text-[#e3b341]"
+              }`}
+            >
+              {installedToolsCount}/{toolchain.tools.length} พร้อมใช้งาน
+            </span>
+          </div>
+          <p className="text-[12px] text-[#7d8087]">
+            เลือกตรวจสอบเครื่องมือ RE (ADB, jadx, apktool, Ghidra, Frida) หรือสั่งติดตั้งอัตโนมัติลงโฟลเดอร์ ASCII เพื่อไม่ให้พาทภาษาไทยทำสคริปต์พัง
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onCheckAndInstallToolchain}
+            className="px-3 py-1.5 rounded-lg bg-[#132033] hover:bg-[#182a42] border border-[#35d0e0]/50 text-[12px] font-medium text-[#cfe0ff] inline-flex items-center gap-1.5 transition-colors"
+          >
+            <Download className="w-3.5 h-3.5 text-[#35d0e0]" />
+            <span>เช็คเครื่องมือ & ติดตั้ง</span>
+          </button>
+          <button
+            type="button"
+            onClick={onScanToolchainOnly}
+            className="px-3 py-1.5 rounded-lg bg-[#101013] hover:bg-[#1c1c21] border border-[#2a2a2e] text-[12px] text-[#d6d8dd] inline-flex items-center gap-1.5 transition-colors"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-[#9b9ea5]" />
+            <span>เช็คเครื่องมือ</span>
+          </button>
+          {compact && (
+            <button
+              type="button"
+              onClick={() => setShowFirstRunBanner(false)}
+              title="ซ่อนการ์ดแนะนำชั่วคราว (เปิดจัดการเต็มได้ที่ เครื่องมือ & MCP)"
+              className="p-1.5 rounded-lg text-[#7d8087] hover:text-[#f2f2f3] hover:bg-[#222226]"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Install Folder Input + ASCII / Thai Path Guard */}
+      <div className="rounded-lg bg-[#0f0f11] border border-[#222226] p-3 space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <label className="text-[11.5px] font-medium text-[#b0b3b8] flex items-center gap-1.5">
+            <FolderOpen className="w-3.5 h-3.5 text-[#35d0e0]" />
+            <span>โฟลเดอร์ติดตั้งชุดเครื่องมือ RE (แนะนำ Pure ASCII):</span>
+          </label>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => onChangeInstallRoot("C:\\DeepTraceTools")}
+              className={`px-2 py-0.5 rounded font-mono text-[11px] border ${
+                toolchain.installRoot === "C:\\DeepTraceTools"
+                  ? "bg-[#132033] border-[#35d0e0]/50 text-[#cfe0ff]"
+                  : "bg-[#16161a] border-[#2a2a2e] text-[#9b9ea5] hover:text-[#f2f2f3]"
+              }`}
+            >
+              C:\DeepTraceTools (แนะนำ)
+            </button>
+            <button
+              type="button"
+              onClick={() => onChangeInstallRoot("D:\\DeepTraceTools")}
+              className={`px-2 py-0.5 rounded font-mono text-[11px] border ${
+                toolchain.installRoot === "D:\\DeepTraceTools"
+                  ? "bg-[#132033] border-[#35d0e0]/50 text-[#cfe0ff]"
+                  : "bg-[#16161a] border-[#2a2a2e] text-[#9b9ea5] hover:text-[#f2f2f3]"
+              }`}
+            >
+              D:\DeepTraceTools
+            </button>
+            {!hasNonAsciiInstallPath && !compact && (
+              <button
+                type="button"
+                onClick={() => onChangeInstallRoot("C:\\Users\\ฟลุ๊ค\\DeepTraceTools")}
+                className="px-2 py-0.5 rounded font-mono text-[10.5px] bg-[#16161a] border border-[#2a2a2e] text-[#7d8087] hover:text-[#e3b341]"
+              >
+                จำลองพาทภาษาไทย
+              </button>
+            )}
+          </div>
+        </div>
+
+        <input
+          type="text"
+          value={toolchain.installRoot}
+          onChange={(e) => onChangeInstallRoot(e.target.value)}
+          placeholder="C:\DeepTraceTools"
+          className={`w-full rounded-lg bg-[#16161a] border px-3 py-1.5 text-[12.5px] font-mono outline-none transition-colors ${
+            hasNonAsciiInstallPath
+              ? "border-[#d29922]/70 text-[#f3cc6c]"
+              : "border-[#2a2a2e] text-[#f2f2f3] focus:border-[#35d0e0]/60"
+          }`}
+        />
+
+        {hasNonAsciiInstallPath ? (
+          <div className="rounded-lg bg-[#251f10]/80 border border-[#d29922]/50 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[12px] text-[#f3cc6c]">
+            <span>
+              คำเตือน: พบตัวอักษรภาษาไทย/Non-ASCII ในพาท ({toolchain.installRoot}) — เครื่องมือสาย RE เช่น Ghidra, jadx, apktool มัก error เมื่อมีภาษาไทย กรุณาย้ายไปติดตั้งที่โฟลเดอร์ภาษาอังกฤษล้วนครับ
+            </span>
+            <button
+              type="button"
+              onClick={() => onChangeInstallRoot("C:\\DeepTraceTools")}
+              className="px-2.5 py-1 rounded-md bg-[#d29922] text-[#0f0f11] font-semibold text-[11.5px] hover:bg-[#e3b341] shrink-0"
+            >
+              สลับเป็น C:\DeepTraceTools ทันที
+            </button>
+          </div>
+        ) : (
+          <div className="text-[11px] font-mono text-[#7ee787] flex items-center gap-1.5">
+            <Check className="w-3.5 h-3.5 shrink-0" />
+            <span>
+              พาทสะอาด (Pure ASCII) ปลอดภัยต่อ Ghidra Headless, jadx, apktool และ Frida CLI
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Detailed Package Matrix + Antivirus Guide (shown in Capabilities Desk OR after Scan-Only) */}
+      {(!compact || toolchain.lastMode !== "idle") && (
+        <div className="space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[12px]">
+            <span className="text-[#9b9ea5]">
+              {toolchain.lastMode === "scan-only"
+                ? `ผลสแกนล่าสุด (${toolchain.lastScanAt ?? "เมื่อครู่"}): พบ ${installedToolsCount} ตัว · ขาด ${missingAnyCount} ตัว`
+                : toolchain.lastMode === "auto-setup"
+                ? `ติดตั้งอัตโนมัติเรียบร้อย (${toolchain.lastScanAt ?? "เมื่อครู่"}) และอัปเดต TOOL_INDEX.md แล้ว`
+                : "รายการเครื่องมือที่รองรับในชุด RE Bundle:"}
+            </span>
+            {missingAnyCount > 0 && (
+              <button
+                type="button"
+                onClick={onCheckAndInstallToolchain}
+                className="px-2.5 py-1 rounded-lg bg-[#14261c] hover:bg-[#1a3325] border border-[#3fb950]/45 text-[11.5px] font-medium text-[#7ee787] inline-flex items-center gap-1"
+              >
+                <Download className="w-3 h-3" />
+                <span>ติดตั้งทั้งหมดที่ขาด ({missingAnyCount})</span>
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {toolchain.tools.map((tool) => (
+              <div
+                key={tool.id}
+                className={`rounded-lg border px-3 py-2 flex items-center justify-between gap-2 ${
+                  tool.installed
+                    ? "bg-[#111317] border-[#242c28]"
+                    : "bg-[#101013] border-[#2a2a2e]"
+                }`}
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                        tool.installed ? "bg-[#3fb950]" : "bg-[#d29922]"
+                      }`}
+                    />
+                    <span className="font-mono text-[12px] font-medium text-[#f2f2f3] truncate">
+                      {tool.name}
+                    </span>
+                    {tool.recommended && (
+                      <span className="text-[10px] font-mono text-[#35d0e0]">
+                        แนะนำ
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-[#7d8087] truncate mt-0.5">
+                    {tool.installed
+                      ? `${toolchain.installRoot}\\${tool.installSubdir}\\${tool.binaryCheck}`
+                      : `ขาด (${tool.sizeMb} MB) · ${tool.description}`}
+                  </div>
+                </div>
+
+                {tool.installed ? (
+                  <span className="px-2 py-0.5 rounded bg-[#14261c] text-[#7ee787] font-mono text-[10.5px] shrink-0">
+                    พร้อมใช้
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onInstallSingleTool(tool.id)}
+                    className="px-2.5 py-1 rounded bg-[#1f1f23] hover:bg-[#2a2a30] border border-[#35373e] text-[11px] text-[#f2f2f3] shrink-0"
+                  >
+                    ติดตั้ง
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Windows SmartScreen / Antivirus Clean Separation Guide */}
+      {!compact && (
+        <div className="rounded-lg bg-[#101013] border border-[#222226] px-3 py-2.5 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setShowDefenderGuide((v) => !v)}
+              className="text-[12px] font-medium text-[#cfe0ff] inline-flex items-center gap-1.5 hover:underline"
+            >
+              <Shield className="w-3.5 h-3.5 text-[#35d0e0]" />
+              <span>
+                วิธีป้องกัน Windows Defender / SmartScreen เตือน False Positive
+              </span>
+              {showDefenderGuide ? (
+                <ChevronDown className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronRight className="w-3.5 h-3.5" />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard?.writeText(defenderCommand);
+                setCopiedDefenderCmd(true);
+                window.setTimeout(() => setCopiedDefenderCmd(false), 1800);
+              }}
+              className="px-2 py-0.5 rounded bg-[#16161a] hover:bg-[#1f1f23] border border-[#2a2a2e] text-[11px] font-mono text-[#b0b3b8]"
+            >
+              {copiedDefenderCmd ? "คัดลอกคำสั่ง Defender แล้ว ✓" : "คัดลอกคำสั่ง Exclusion"}
+            </button>
+          </div>
+
+          {showDefenderGuide && (
+            <div className="text-[12px] text-[#9b9ea5] space-y-1.5 pt-1 border-t border-[#222226]">
+              <p>
+                1. ตัวติดตั้ง <code className="font-mono text-[#cfe0ff]">DeepTrace.exe</code> แยกไฟล์ UI ออกจากเครื่องมือ RE (ไม่ยัด payload/UPX) เพื่อลดโอกาสถูก Antivirus มองผิดพลาด; ส่วนการเตือนครั้งแรกใน Windows SmartScreen เกิดจากไฟล์ยังไม่มี Code Signing Certificate เชิงพาณิชย์ (คลิก <em>More info → Run anyway</em>)
+              </p>
+              <p>
+                2. เครื่องมืออย่าง <code className="font-mono text-[#cfe0ff]">frida</code> / <code className="font-mono text-[#cfe0ff]">jadx</code> มักถูก Windows Defender สแกนช้าหรือลบไฟล์บางตัว แนะนำให้รันคำสั่ง PowerShell (Admin) ด้านล่างเพื่อยกเว้นเฉพาะโฟลเดอร์เครื่องมือ:
+              </p>
+              <pre className="rounded bg-[#0f0f11] border border-[#222226] px-2.5 py-1.5 font-mono text-[11px] text-[#7ee787] overflow-x-auto">
+                {defenderCommand}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
 
   const activeEndpoint =
     endpoints.find((e) => e.id === selectedEndpointId) ?? endpoints[0];
@@ -516,6 +802,7 @@ export const CenterWorkspaceCard: React.FC<CenterWorkspaceCardProps> = ({
           {/* Centered Calm Reading Stream */}
           <div className="flex-1 overflow-y-auto">
             <div className="max-w-[780px] mx-auto px-6 py-7 space-y-7">
+              {showFirstRunBanner && renderToolchainBootstrapper(true)}
               {messages.map((msg) => {
                 if (msg.role === "user") {
                   return (
@@ -1160,6 +1447,7 @@ export const CenterWorkspaceCard: React.FC<CenterWorkspaceCardProps> = ({
       {activeDesk === "capabilities" && (
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-[820px] mx-auto px-7 py-6 space-y-8">
+            {renderToolchainBootstrapper(false)}
             {renderExternalMcpBridgeSection()}
 
             {/* Token Budget Meter (Aetox Harness Architecture) */}

@@ -1,6 +1,6 @@
 [package]
 name = "deeptrace"
-version = "0.1.0-beta.1"
+version = "0.1.0-beta.2"
 description = "DeepTrace — Custom AI Desktop App for Reverse Engineering"
 authors = ["DeepTrace"]
 edition = "2021"

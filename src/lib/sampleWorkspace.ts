@@ -11,6 +11,7 @@ import {
   ReSkillPreset,
   ReSpecialistAgent,
   ResourceGovernorConfig,
+  ToolchainState,
   WorkspaceFile,
 } from "../types/workspace";
 
@@ -468,58 +469,76 @@ export const SAMPLE_MCP_SERVERS: McpServerStatus[] = [
 
 export const SAMPLE_RE_SKILLS: ReSkillPreset[] = [
   {
-    id: "ssl-pinning-bypass",
-    name: "ssl-pinning-bypass",
+    id: "reverse-skill-router",
+    name: "reverse-skill-router",
+    category: "native",
+    summary: "Master Routing (zhaoxuya520/reverse-skill): จำแนกเป้าหมาย -> เช็ค TOOL_INDEX -> Static/Dynamic Slice ก่อนรัน",
+    triggers: ["Route First", "triage", "TARGET.md", "TOOL_INDEX"],
+    tokenCost: 190,
+    enabled: true,
+  },
+  {
+    id: "apk-reverse",
+    name: "apk-reverse",
     category: "bypass",
-    summary: "Frida multi-layer SSL pinning bypass (OkHttp3, TrustManager, BoringSSL, Flutter)",
-    triggers: ["SSLHandshakeException", "CertificatePinner", "libflutter.so"],
+    summary: "Android APK/DEX/Smali + Frida multi-layer SSL pinning bypass & Manifest entrypoint mapping",
+    triggers: ["SSLHandshakeException", "CertificatePinner", "libflutter.so", "apk", "smali"],
     tokenCost: 420,
     enabled: true,
   },
   {
-    id: "jni-register-natives",
-    name: "jni-register-natives",
+    id: "ghidra-native-reverse",
+    name: "ghidra-native-reverse",
     category: "native",
-    summary: "Hook RegisterNatives & art::JNI to dump dynamic native method offsets",
-    triggers: ["JNI_OnLoad", "RegisterNatives", "UnsatisfiedLinkError"],
-    tokenCost: 390,
-    enabled: true,
-  },
-  {
-    id: "ollvm-deobfuscator",
-    name: "ollvm-deobfuscator",
-    category: "native",
-    summary: "Trace Control-Flow Flattening (BCF/CFF) dispatcher states in ARM64 .so",
-    triggers: ["OLLVM", "switch dispatcher", "sub_"],
-    tokenCost: 510,
-    enabled: true,
-  },
-  {
-    id: "anti-frida-bypass",
-    name: "anti-frida-bypass",
-    category: "bypass",
-    summary: "Evade /proc/self/maps, port 27042, gum-js-loop & pthread_create checks",
-    triggers: ["frida-server", "maps", "SIGKILL", "ptrace"],
+    summary: "Native .so / ELF / ARM64 Ghidra headless xref slicing, RegisterNatives & OLLVM deobfuscation",
+    triggers: ["JNI_OnLoad", "RegisterNatives", "OLLVM", "sub_", ".so", "arm64"],
     tokenCost: 460,
-    enabled: false,
+    enabled: true,
   },
   {
-    id: "api-sign-reconstructor",
-    name: "api-sign-reconstructor",
+    id: "js-vmp-reverse",
+    name: "js-vmp-reverse",
     category: "network",
-    summary: "Correlate X-Sign / HMAC headers from APK crypto code into clean Python/PHP clients",
-    triggers: ["X-Sign", "HMAC", "AES", "Protobuf"],
+    summary: "Browser JS AST / JSVMP VM-bytecode & request-signing trace via request origin hooks",
+    triggers: ["jsvmp", "webpack", "ast", "fetch", "xhr"],
+    tokenCost: 350,
+    enabled: true,
+  },
+  {
+    id: "protocol-protobuf-reverse",
+    name: "protocol-protobuf-reverse",
+    category: "network",
+    summary: "Custom packet framing, Protobuf/gRPC schema recovery & X-Sign/HMAC verification",
+    triggers: ["X-Sign", "HMAC", "AES", "Protobuf", "grpc", "websocket"],
     tokenCost: 380,
     enabled: true,
   },
   {
-    id: "il2cpp-dumper",
-    name: "il2cpp-dumper",
+    id: "unity-il2cpp-dotnet",
+    name: "unity-il2cpp-dotnet",
     category: "game",
-    summary: "Resolve Unity libil2cpp.so RVA offsets and global-metadata.dat symbols",
-    triggers: ["libil2cpp.so", "global-metadata.dat"],
+    summary: "Unity libil2cpp.so RVA offset resolution + .NET/Mono managed assembly slicing",
+    triggers: ["libil2cpp.so", "global-metadata.dat", "unity", ".net"],
     tokenCost: 410,
     enabled: false,
+  },
+  {
+    id: "go-rust-binary-reverse",
+    name: "go-rust-binary-reverse",
+    category: "native",
+    summary: "Stripped Go pclntab / Rust binary symbol & ABI string recovery",
+    triggers: ["pclntab", "golang", "rust", "tokio"],
+    tokenCost: 390,
+    enabled: false,
+  },
+  {
+    id: "field-journal-evolver",
+    name: "field-journal-evolver",
+    category: "bypass",
+    summary: "จดบันทึกหลักฐาน Evidence -> Finding -> Path ลง FIELD_JOURNAL.md เพื่อลดการงมหาทางซ้ำ",
+    triggers: ["FIELD_JOURNAL", "evidence", "regression", "anti-fumble"],
+    tokenCost: 160,
+    enabled: true,
   },
 ];
 
@@ -623,6 +642,30 @@ export const SAMPLE_MEMORY_DOCS: ProjectMemoryDoc[] = [
 
 - ค้นหา Header Signature ใน JADX ด้วย String Xref ก่อนสแกนแพ็กเกจทั้งหมดเสมอ
 - ก่อน Hook ฟังก์ชันใน .so ให้ตรวจสอบความยาวบัฟเฟอร์จาก Register ถัดไป (เช่น W2) ก่อนเรียก \`Memory.readUtf8String\``,
+  },
+  {
+    id: "mem-tool-index",
+    filename: "TOOL_INDEX.md",
+    title: "Local RE Toolchain Paths (ASCII Safe)",
+    updatedAt: "วันนี้ 04:55",
+    content: `# TOOL_INDEX (Auto-Maintained)
+
+- **Install Root**: \`C:\\DeepTraceTools\` (ASCII-only path, safe for Ghidra/jadx/Frida)
+- **adb**: \`C:\\DeepTraceTools\\platform-tools\\adb.exe\` (Installed)
+- **frida**: \`C:\\DeepTraceTools\\venv\\Scripts\\frida.exe\` (Installed)
+- **jadx / apktool / ghidra**: รอการติดตั้งผ่านปุ่ม **เช็คเครื่องมือ & ติดตั้ง**`,
+  },
+  {
+    id: "mem-journal",
+    filename: "FIELD_JOURNAL.md",
+    title: "Evidence -> Finding -> Path Journal",
+    updatedAt: "วันนี้ 04:55",
+    content: `# FIELD_JOURNAL (reverse-skill Standard)
+
+บันทึกหลักฐานและเส้นทางที่พิสูจน์แล้ว (ห้ามแต่งสมมติฐานโดยไม่มีหลักฐาน):
+
+1. **[Evidence]** String Xref \`X-Sign-V2\` -> **Finding**: ส่งผ่าน \`SignInterceptor.nativeSign\` -> **Path**: \`java/com/target/security/CryptoManager.java\`
+2. **[Evidence]** Frida \`args[1]\` ไม่มี Null-terminator -> **Finding**: ต้องอ่านความยาวจาก \`args[2].toInt32()\` -> **Path**: \`frida/hook_native_sign.js\``,
   },
 ];
 
@@ -945,6 +988,91 @@ export const SAMPLE_EXTERNAL_MCP_BRIDGE: ExternalMcpBridgeConfig = {
   defaultModelName: "claude-sonnet-4-20250514",
   allowExternalSubtaskDelegation: true,
   requireApiKeyPreflight: true,
+};
+
+export const SAMPLE_TOOLCHAIN_STATE: ToolchainState = {
+  installRoot: "C:\\DeepTraceTools",
+  lastScanAt: null,
+  lastMode: "idle",
+  tools: [
+    {
+      id: "adb",
+      name: "Android Platform-Tools (ADB)",
+      description: "เชื่อมต่อมือถือ Android, ดึง APK และดู logcat",
+      version: "35.0.2",
+      recommended: true,
+      installed: true,
+      installSubdir: "platform-tools",
+      sizeMb: 14,
+      binaryCheck: "adb.exe",
+    },
+    {
+      id: "frida",
+      name: "Frida + frida-tools",
+      description: "Dynamic instrumentation hook runtime ระดับ native & Java",
+      version: "16.5.9",
+      recommended: true,
+      installed: true,
+      installSubdir: "venv\\Scripts",
+      sizeMb: 29,
+      binaryCheck: "frida.exe",
+    },
+    {
+      id: "jadx",
+      name: "jadx-cli / jadx-gui",
+      description: "Decompile APK/DEX เป็น Java source สำหรับ jadx-ai-mcp",
+      version: "1.5.1",
+      recommended: true,
+      installed: false,
+      installSubdir: "jadx\\bin",
+      sizeMb: 38,
+      binaryCheck: "jadx.bat",
+    },
+    {
+      id: "apktool",
+      name: "Apktool",
+      description: "แกะ Smali & AndroidManifest.xml เพื่อแพตช์และรีแพ็ก APK",
+      version: "2.10.0",
+      recommended: true,
+      installed: false,
+      installSubdir: "apktool",
+      sizeMb: 22,
+      binaryCheck: "apktool.bat",
+    },
+    {
+      id: "ghidra",
+      name: "Ghidra + GhidraMCP",
+      description: "Headless static decompiler สำหรับไฟล์ .so (ARM64/x86/ELF)",
+      version: "11.2.1",
+      recommended: true,
+      installed: false,
+      installSubdir: "ghidra\\support",
+      sizeMb: 395,
+      binaryCheck: "analyzeHeadless.bat",
+    },
+    {
+      id: "radare2",
+      name: "Radare2 / Rizin",
+      description: "CLI disassembler/patching น้ำหนักเบา ใช้ VRAM น้อย",
+      version: "5.9.8",
+      recommended: false,
+      installed: false,
+      installSubdir: "radare2\\bin",
+      sizeMb: 42,
+      binaryCheck: "radare2.exe",
+    },
+    {
+      id: "il2cppdumper",
+      name: "Il2CppDumper",
+      description: "ถอด RVA และ metadata จากเกม Unity (libil2cpp.so)",
+      version: "6.7.46",
+      recommended: false,
+      installed: false,
+      installSubdir: "il2cppdumper",
+      sizeMb: 18,
+      binaryCheck: "Il2CppDumper.exe",
+    },
+  ],
 };
 
 export const SAMPLE_AGENT_MESSAGES: AgentMessage[] = [

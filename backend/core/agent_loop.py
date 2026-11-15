@@ -69,6 +69,58 @@ def sanitize_re_prompt_for_cloud(prompt: str) -> str:
     )
 
 
+def route_reverse_skill(prompt: str) -> dict[str, str]:
+    """Classify an RE prompt to a zhaoxuya520/reverse-skill module before deep analysis."""
+    lower = prompt.lower()
+    if any(k in lower for k in ("apk", "smali", "dex", "jadx", "android", "okhttp", "ssl pinning")):
+        return {
+            "skill": "apk-reverse",
+            "reason": "Android / APK / Smali / DEX static & Frida hook workflow",
+            "workflow": "Route First -> Tool Index -> Manifest/DEX Triage -> Smali Slice -> Hook/Patch",
+        }
+    if any(k in lower for k in (".so", "ghidra", "arm64", "x86", "elf", "jni", "sub_", "ollvm", "ida")):
+        return {
+            "skill": "ghidra-reverse",
+            "reason": "Native ELF / .so / Mach-O decompilation & JNI xref workflow",
+            "workflow": "Route First -> Tool Index -> Imports/Exports -> 3-Hop Xref Slice -> Decompile",
+        }
+    if any(k in lower for k in ("js", "javascript", "webpack", "ast", "jsvmp", "xhr", "fetch", "devtools")):
+        return {
+            "skill": "js-reverse",
+            "reason": "Web / JS AST / JSVMP & request signing workflow",
+            "workflow": "Route First -> Tool Index -> Request Origin -> AST/Hook -> Signature Trace",
+        }
+    if any(k in lower for k in ("protobuf", "grpc", "websocket", "packet", "wireshark", "mitm", "pcap", "hmac", "aes")):
+        return {
+            "skill": "protocol-reverse",
+            "reason": "Traffic / Protobuf / custom framing & crypto pipeline workflow",
+            "workflow": "Route First -> Tool Index -> Capture/Decrypt -> Frame Schema -> Encoder Check",
+        }
+    if any(k in lower for k in ("unity", "il2cpp", "global-metadata", ".net", "csharp", "mono", "dll")):
+        return {
+            "skill": "dotnet-reverse",
+            "reason": ".NET / Unity Il2Cpp metadata & managed assembly workflow",
+            "workflow": "Route First -> Tool Index -> Metadata Dump -> Managed/Native Bridge -> Slice",
+        }
+    if any(k in lower for k in ("golang", "go binary", "rust", "pclntab", "tokio", "panic")):
+        return {
+            "skill": "go-rust-reverse",
+            "reason": "Stripped Go / Rust binary symbol recovery workflow",
+            "workflow": "Route First -> Tool Index -> pclntab/RTTI Recovery -> String/ABI Trace",
+        }
+    if any(k in lower for k in ("diff", "patch", "before/after", "cve", "version compare")):
+        return {
+            "skill": "binary-diff",
+            "reason": "Cross-version patch & function diffing workflow",
+            "workflow": "Route First -> Tool Index -> Function Match -> Control-Flow Diff -> Evidence",
+        }
+    return {
+        "skill": "reverse-engineering",
+        "reason": "General static/dynamic triage with Evidence -> Finding -> Path discipline",
+        "workflow": "Route First -> Tool Index -> Triage -> Targeted Slice -> Field Journal",
+    }
+
+
 def is_guardrail_refusal(response_text: str) -> bool:
     """Detect upstream strict-cloud refusal responses so the router can failover cleanly."""
     lowered = response_text.strip().lower()

@@ -16,6 +16,7 @@ import {
   SAMPLE_RE_SKILLS,
   SAMPLE_SESSIONS,
   SAMPLE_SPECIALISTS,
+  SAMPLE_TOOLCHAIN_STATE,
 } from "./lib/sampleWorkspace";
 import {
   AgentMessage,
@@ -35,12 +36,60 @@ import {
   ReSkillPreset,
   ReSpecialistAgent,
   ResourceGovernorConfig,
+  ToolchainState,
   WorkbenchTabId,
   WorkspaceFile,
 } from "./types/workspace";
 
 function nowTimestamp(): string {
   return new Date().toTimeString().slice(0, 8);
+}
+
+function classifyReverseSkill(prompt: string): {
+  skill: string;
+  workflow: string;
+} {
+  const lower = prompt.toLowerCase();
+  if (/(apk|smali|dex|jadx|android|okhttp|pinning)/.test(lower)) {
+    return {
+      skill: "apk-reverse",
+      workflow: "Route First -> TOOL_INDEX -> Manifest/DEX Triage -> Smali Slice -> Hook/Patch",
+    };
+  }
+  if (/(\.so|ghidra|arm64|x86|elf|jni|sub_|ollvm|ida)/.test(lower)) {
+    return {
+      skill: "ghidra-native-reverse",
+      workflow: "Route First -> TOOL_INDEX -> Imports/Exports -> 3-Hop Xref Slice -> Decompile",
+    };
+  }
+  if (/(jsvmp|javascript|webpack|ast|xhr|fetch)/.test(lower)) {
+    return {
+      skill: "js-vmp-reverse",
+      workflow: "Route First -> TOOL_INDEX -> Request Origin -> AST/Hook -> Signature Trace",
+    };
+  }
+  if (/(protobuf|grpc|websocket|packet|hmac|aes|x-sign)/.test(lower)) {
+    return {
+      skill: "protocol-protobuf-reverse",
+      workflow: "Route First -> TOOL_INDEX -> Capture/Decrypt -> Frame Schema -> Encoder Check",
+    };
+  }
+  if (/(unity|il2cpp|global-metadata|\.net|mono)/.test(lower)) {
+    return {
+      skill: "unity-il2cpp-dotnet",
+      workflow: "Route First -> TOOL_INDEX -> Metadata Dump -> Managed/Native Bridge -> Slice",
+    };
+  }
+  if (/(golang|rust|pclntab|tokio)/.test(lower)) {
+    return {
+      skill: "go-rust-binary-reverse",
+      workflow: "Route First -> TOOL_INDEX -> pclntab/RTTI Recovery -> String/ABI Trace",
+    };
+  }
+  return {
+    skill: "reverse-skill-router",
+    workflow: "Route First -> TOOL_INDEX -> Triage -> Targeted Slice -> FIELD_JOURNAL",
+  };
 }
 
 export function App() {
@@ -90,6 +139,7 @@ export function App() {
   );
   const [externalMcpConfig, setExternalMcpConfig] =
     useState<ExternalMcpBridgeConfig>(SAMPLE_EXTERNAL_MCP_BRIDGE);
+  const [toolchain, setToolchain] = useState<ToolchainState>(SAMPLE_TOOLCHAIN_STATE);
   const [permissionMode, setPermissionMode] = useState<PermissionMode>("turbo");
   const [sliceHops, setSliceHops] = useState<number>(3);
   const [messages, setMessages] = useState<AgentMessage[]>(SAMPLE_AGENT_MESSAGES);
@@ -499,6 +549,7 @@ export function App() {
           return;
         }
 
+        const skillRoute = classifyReverseSkill(promptText);
         const assistantMsg: AgentMessage = {
           id: `msg-${Date.now() + 1}`,
           role: "assistant",
@@ -508,6 +559,7 @@ export function App() {
           model: `${endpoint.modelName} (${endpoint.privacyLevel})`,
           routeKind: endpoint.provider === "cloud" ? "cloud" : "local",
           reasoningSteps: [
+            `[reverse-skill Router] จับคู่โหมดงาน -> ${skillRoute.skill} (${skillRoute.workflow})`,
             `เลือกเส้นทางโมเดล ${endpoint.name} (${endpoint.baseUrl})`,
             `Resource Guard: CPU ≤ ${resourceConfig.maxCpuThreads}T, Concurrent MCP ≤ ${resourceConfig.maxConcurrentMcpJobs}`,
             `ตัด Call Graph รอบ ${targetFile.name} ลึก ${currentHops}-Hop เพื่อประหยัด Context`,
@@ -521,8 +573,8 @@ export function App() {
                 targetFile.category === "frida"
                   ? "slice_call_graph"
                   : "inspect_xrefs",
-              args: JSON.stringify({ file: targetFile.path, hops: currentHops }),
-              resultPreview: `Sliced ${targetFile.name}`,
+              args: JSON.stringify({ file: targetFile.path, hops: currentHops, skill: skillRoute.skill }),
+              resultPreview: `Routed via ${skillRoute.skill} · Sliced ${targetFile.name}`,
               durationMs: 38,
               status: "success",
               targetFileId: targetFile.id,
@@ -534,7 +586,8 @@ export function App() {
             sliceHops: currentHops,
           },
           content:
-            `วิเคราะห์ **${targetFile.name}** ด้วย **${endpoint.modelName}** (${currentHops}-Hop Slice) เรียบร้อยครับ\n\n` +
+            `วิเคราะห์ **${targetFile.name}** ด้วย **${endpoint.modelName}** (${currentHops}-Hop Slice · สกิล \`${skillRoute.skill}\`) เรียบร้อยครับ\n\n` +
+            `- ลำดับ Router: \`${skillRoute.workflow}\`\n` +
             `- สัญลักษณ์ที่เกี่ยวข้อง: ${targetFile.symbols.map((s) => `\`${s.name}\``).join(", ") || "ไม่มี"}\n` +
             `- โหมด Local Permissions: \`${permissionMode}\` · Resource Profile: \`${resourceConfig.mode}\`\n` +
             `- แนะนำ: สามารถเปิดแท็บ **Review** หรือ **JNI & Symbols** ใน Workbench ด้านขวาเพื่อตรวจแก้และกด **Apply Patch** ได้ทันที`,
@@ -543,10 +596,10 @@ export function App() {
                 learnedProposal: {
                   id: `learn-${Date.now()}`,
                   scope: "project:target_app" as LearnedScope,
-                  scopeLabel: "โปรเจกต์ target_app",
+                  scopeLabel: "โปรเจกต์ target_app (FIELD_JOURNAL.md)",
                   audience: "โหลดเฉพาะตอนวิเคราะห์ไฟล์นี้ · ประหยัด ~1,900 tokens ในรอบหน้า",
-                  ruleText: `ใช้ขอบเขต ${currentHops}-Hop Slice จาก ${targetFile.symbols[0]?.name ?? targetFile.name} และยึดผล ${activeServer} เป็นหลักก่อนรัน Frida บน ${targetFile.name}`,
-                  reason: "จำจุดตั้งต้น Call Graph ที่ยืนยันแล้วเพื่อไม่ต้องสแกนซ้ำทั้งคลาส",
+                  ruleText: `[Evidence] รันสกิล ${skillRoute.skill} (${currentHops}-Hop Slice) จาก ${targetFile.symbols[0]?.name ?? targetFile.name} -> [Finding] ยึดผล ${activeServer} ก่อนสร้าง Hook -> [Path] ${targetFile.path}`,
+                  reason: "บันทึกหลักฐานแบบ Evidence -> Finding -> Path ลง FIELD_JOURNAL.md เพื่อไม่ต้องสแกนซ้ำ",
                   tokensSavedEst: 1900,
                   state: "pending" as const,
                 },
@@ -803,6 +856,121 @@ export function App() {
     setExternalMcpConfig((prev) => ({ ...prev, ...patch }));
   };
 
+  const syncToolIndexDoc = (nextRoot: string, nextTools: ToolchainState["tools"]) => {
+    const lines = nextTools.map(
+      (t) =>
+        `- **${t.id}** (${t.version}): ${
+          t.installed
+            ? `\`${nextRoot}\\${t.installSubdir}\\${t.binaryCheck}\` (Installed)`
+            : "Missing"
+        }`
+    );
+    setMemoryDocs((prev) =>
+      prev.map((doc) =>
+        doc.id === "mem-tool-index"
+          ? {
+              ...doc,
+              updatedAt: nowTimestamp(),
+              content: `# TOOL_INDEX (Auto-Maintained)\n\n- **Install Root**: \`${nextRoot}\`\n${lines.join("\n")}`,
+            }
+          : doc
+      )
+    );
+  };
+
+  const handleChangeInstallRoot = (root: string) => {
+    const trimmed = root.trim();
+    setToolchain((prev) => ({ ...prev, installRoot: trimmed }));
+    if (/[^\x00-\x7F]/.test(trimmed)) {
+      appendLog(
+        "mcp",
+        "warn",
+        `[Path Guard] พบตัวอักษรภาษาไทย/Non-ASCII ในพาท "${trimmed}" — แนะนำให้สลับเป็น C:\\DeepTraceTools`
+      );
+    }
+  };
+
+  const handleScanToolchainOnly = () => {
+    const ts = nowTimestamp();
+    const hasNonAscii = /[^\x00-\x7F]/.test(toolchain.installRoot);
+    const missing = toolchain.tools.filter((t) => !t.installed);
+    setToolchain((prev) => ({
+      ...prev,
+      lastScanAt: ts,
+      lastMode: "scan-only",
+    }));
+    appendLog(
+      "mcp",
+      missing.length > 0 ? "warn" : "success",
+      `[Toolchain Scan] สแกนแบบ Scan-Only เสร็จสิ้น: พบ ${
+        toolchain.tools.length - missing.length
+      }/${toolchain.tools.length} ตัว · ขาด: ${
+        missing.map((m) => m.id).join(", ") || "ครบแล้ว"
+      }`
+    );
+    if (hasNonAscii) {
+      appendLog(
+        "mcp",
+        "warn",
+        `[Path Guard] คำเตือน: พาท "${toolchain.installRoot}" มีตัวอักษรที่ไม่ใช่ ASCII (Ghidra/jadx อาจไม่รองรับ)`
+      );
+    }
+  };
+
+  const handleCheckAndInstallToolchain = () => {
+    const ts = nowTimestamp();
+    const safeRoot = /[^\x00-\x7F]/.test(toolchain.installRoot) || !toolchain.installRoot
+      ? "C:\\DeepTraceTools"
+      : toolchain.installRoot;
+
+    const updatedTools = toolchain.tools.map((t) =>
+      t.recommended ? { ...t, installed: true } : t
+    );
+
+    if (safeRoot !== toolchain.installRoot) {
+      appendLog(
+        "mcp",
+        "warn",
+        `[Path Guard] เปลี่ยนโฟลเดอร์ติดตั้งเป็น "${safeRoot}" อัตโนมัติเพื่อหลีกเลี่ยงพาทภาษาไทย/Non-ASCII`
+      );
+    }
+
+    setToolchain({
+      installRoot: safeRoot,
+      lastScanAt: ts,
+      lastMode: "auto-setup",
+      tools: updatedTools,
+    });
+    syncToolIndexDoc(safeRoot, updatedTools);
+    appendLog(
+      "mcp",
+      "success",
+      `[Toolchain Auto-Setup] สแกนและติดตั้งเครื่องมือ RE มาตรฐานครบทุกตัวลงใน ${safeRoot} + อัปเดต TOOL_INDEX.md เรียบร้อย`
+    );
+  };
+
+  const handleInstallSingleTool = (toolId: string) => {
+    const safeRoot = /[^\x00-\x7F]/.test(toolchain.installRoot) || !toolchain.installRoot
+      ? "C:\\DeepTraceTools"
+      : toolchain.installRoot;
+    const nextTools = toolchain.tools.map((t) =>
+      t.id === toolId ? { ...t, installed: true } : t
+    );
+    const target = nextTools.find((t) => t.id === toolId);
+    setToolchain((prev) => ({
+      ...prev,
+      installRoot: safeRoot,
+      lastScanAt: nowTimestamp(),
+      tools: nextTools,
+    }));
+    syncToolIndexDoc(safeRoot, nextTools);
+    appendLog(
+      "mcp",
+      "success",
+      `[Toolchain] ติดตั้ง ${target?.name ?? toolId} ลงใน ${safeRoot}\\${target?.installSubdir ?? ""} และอัปเดต TOOL_INDEX.md แล้ว`
+    );
+  };
+
   const handleSimulateExternalMcpCall = () => {
     setActiveDesk("chat");
     const mcpProvider = providers.find(
@@ -920,10 +1088,11 @@ export function App() {
     const prop = targetMsg?.learnedProposal;
     if (!prop) return;
     const scope = overrideScope ?? prop.scope;
-    const targetDocId =
-      scope === "mode:re-playbook" || scope === "machine:toolchain"
-        ? "mem-playbook"
-        : "mem-target";
+    const targetDocId = prop.ruleText.includes("[Evidence]")
+      ? "mem-journal"
+      : scope === "mode:re-playbook" || scope === "machine:toolchain"
+      ? "mem-playbook"
+      : "mem-target";
 
     setMessages((prev) =>
       prev.map((m) =>
@@ -1062,6 +1231,11 @@ export function App() {
         externalMcpConfig={externalMcpConfig}
         onUpdateExternalMcpConfig={handleUpdateExternalMcpConfig}
         onSimulateExternalMcpCall={handleSimulateExternalMcpCall}
+        toolchain={toolchain}
+        onChangeInstallRoot={handleChangeInstallRoot}
+        onScanToolchainOnly={handleScanToolchainOnly}
+        onCheckAndInstallToolchain={handleCheckAndInstallToolchain}
+        onInstallSingleTool={handleInstallSingleTool}
       />
 
       {/* Right Resize Handle (Invisible until hover) */}

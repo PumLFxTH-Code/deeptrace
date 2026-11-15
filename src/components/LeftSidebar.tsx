@@ -2,7 +2,6 @@ import React, { useMemo, useState } from "react";
 import {
   Bot,
   BookOpen,
-  Cpu,
   FolderGit2,
   KeyRound,
   MessageSquare,
@@ -111,9 +110,11 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       <div className="px-3.5 pt-3.5 pb-2.5 flex flex-col gap-2.5 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-[#1f1f23] border border-[#2a2a2e] flex items-center justify-center">
-              <Cpu className="w-4 h-4 text-[#35d0e0]" />
-            </div>
+            <img
+              src="/logo.png"
+              alt="DeepTrace"
+              className="w-7 h-7 rounded-lg shrink-0 border border-[#2a2a2e]"
+            />
             <div className="leading-tight">
               <div className="text-[14px] font-semibold text-[#f2f2f3] tracking-tight">
                 DeepTrace

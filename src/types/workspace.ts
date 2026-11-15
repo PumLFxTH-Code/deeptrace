@@ -208,3 +208,22 @@ export interface ExternalMcpBridgeConfig {
   allowExternalSubtaskDelegation: boolean;
   requireApiKeyPreflight: boolean;
 }
+
+export interface ReToolPackage {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  recommended: boolean;
+  installed: boolean;
+  installSubdir: string;
+  sizeMb: number;
+  binaryCheck: string;
+}
+
+export interface ToolchainState {
+  installRoot: string;
+  lastScanAt: string | null;
+  lastMode: "idle" | "scan-only" | "auto-setup";
+  tools: ReToolPackage[];
+}
